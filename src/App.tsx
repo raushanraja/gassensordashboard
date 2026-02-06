@@ -152,15 +152,32 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 
   // Interactive overlay logic
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const updateHoveredPoint = (clientX: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    const x = clientX - rect.left;
     
     // Find closest data point
     const index = Math.round(((x - padding) / (graphWidth - padding * 2)) * (data.length - 1));
     if (index >= 0 && index < data.length) {
       setHoveredPoint({ ...data[index], x: getX(index), y: getY(data[index].value) });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    updateHoveredPoint(e.clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.touches.length > 0) {
+      updateHoveredPoint(e.touches[0].clientX);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length > 0) {
+      updateHoveredPoint(e.touches[0].clientX);
     }
   };
 
@@ -171,6 +188,9 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
       style={{ height: `${dimensions.height}px` }}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => setHoveredPoint(null)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={() => setHoveredPoint(null)}
     >
       <svg width={dimensions.width} height={dimensions.height} className="absolute inset-0">
         <defs>
