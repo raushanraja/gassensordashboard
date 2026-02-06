@@ -1,8 +1,65 @@
 import "./app.css";
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
-/**
- * UTILITIES & CONFIGURATION
+/** * TYPE DEFINITIONS
+ */
+
+interface DataPoint {
+  timestamp: Date;
+  value: number;
+}
+
+interface HoveredPoint extends DataPoint {
+  x: number;
+  y: number;
+}
+
+interface Config {
+  supabaseUrl: string;
+  apiKey: string;
+  sensorId: string;
+  tableName: string;
+  refreshRate: number;
+}
+
+interface DeviceInfo {
+  rssi: number | null;
+  device: string | null;
+  uptime: number | null;
+}
+
+interface SmoothLineChartProps {
+  data: DataPoint[];
+  color?: string;
+}
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  config: Config;
+  onSave: (config: Config) => void;
+}
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  icon: string;
+  iconColor: string;
+  subtext: string;
+  statusColor?: string;
+}
+
+interface SupabaseReading {
+  recorded_at: string;
+  raw_value: number;
+  metadata?: {
+    rssi: number;
+    device: string;
+    uptime_s: number;
+  };
+}
+
+/** * UTILITIES & CONFIGURATION
  */
 
 // Inject FontAwesome CDN
@@ -49,9 +106,9 @@ const formatUptime = (seconds: number) => {
  */
 
 // 1. Custom Responsive SVG Chart
-const SmoothLineChart = ({ data, color = "#6366f1" }) => {
-  const [hoveredPoint, setHoveredPoint] = useState(null);
-  const containerRef = useRef(null);
+const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
+  const [hoveredPoint, setHoveredPoint] = useState<HoveredPoint | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 300 });
 
   // Handle Resize
@@ -87,18 +144,15 @@ const SmoothLineChart = ({ data, color = "#6366f1" }) => {
   const maxVal = 4095; // ADC max
   const minVal = 0;
 
-  const getX = (index) => (index / (data.length - 1)) * (graphWidth - padding * 2) + padding;
-  const getY = (val) => graphHeight - ((val - minVal) / (maxVal - minVal)) * (graphHeight - padding * 2) - padding;
+  const getX = (index: number) => (index / (data.length - 1)) * (graphWidth - padding * 2) + padding;
+  const getY = (val: number) => graphHeight - ((val - minVal) / (maxVal - minVal)) * (graphHeight - padding * 2) - padding;
 
   // Generate Path (Catmull-Rom or simple Bezier for smoothness)
   // For simplicity and stability, we'll use a simple line or quadratic helper
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
-  
-  // Create area fill path
-  const areaPath = `${points} L${getX(data.length - 1)},${graphHeight} L${getX(0)},${graphHeight} Z`;
 
   // Interactive overlay logic
-  const handleMouseMove = (e) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -190,21 +244,27 @@ const SmoothLineChart = ({ data, color = "#6366f1" }) => {
 };
 
 // 2. Settings Modal
-const SettingsModal = ({ isOpen, onClose, config, onSave }) => {
-  const [formData, setFormData] = useState(config);
+const SettingsModal = ({ isOpen, onClose, config, onSave }: SettingsModalProps) => {
+  const [formData, setFormData] = useState<Config>(config);
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const prevIsOpenRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen) setFormData(config);
+    // Only reset form data when modal transitions from closed to open
+    if (isOpen && !prevIsOpenRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFormData(config);
+    }
+    prevIsOpenRef.current = isOpen;
   }, [isOpen, config]);
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev: Config) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     // Simulate API validation delay
@@ -369,7 +429,7 @@ const SettingsModal = ({ isOpen, onClose, config, onSave }) => {
 };
 
 // 3. Stat Card
-const StatCard = ({ title, value, icon, iconColor, subtext, statusColor }) => (
+const StatCard = ({ title, value, icon, iconColor, subtext, statusColor }: StatCardProps) => (
   <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-lg relative overflow-hidden group hover:border-slate-600 transition-all">
     <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500`}>
         <i className={`fa-solid ${icon} text-6xl ${iconColor}`}></i>
@@ -403,13 +463,13 @@ const App = () => {
     refreshRate: 5
   });
   
-  const [data, setData] = useState([]);
+  const [data, setData] = useState<DataPoint[]>([]);
   const [timeRange, setTimeRange] = useState('24H');
   const [lastUpdated, setLastUpdated] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
-  const [deviceInfo, setDeviceInfo] = useState({ rssi: null, device: null, uptime: null });
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo>({ rssi: null, device: null, uptime: null });
 
   // Fetch data from Supabase
   const fetchSupabaseData = async (isInitialLoad = false) => {
@@ -461,7 +521,7 @@ const App = () => {
       const readings = await response.json();
 
       if (readings && readings.length > 0) {
-        const formattedData = readings.map((r: any) => ({
+        const formattedData = readings.map((r: SupabaseReading) => ({
           timestamp: new Date(r.recorded_at),
           value: r.raw_value
         }));
@@ -522,6 +582,7 @@ const App = () => {
     if (isConfigured && config.supabaseUrl && config.apiKey && config.sensorId) {
       fetchSupabaseData(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, timeRange, isConfigured]);
 
   // Auto-refresh data based on refresh rate
@@ -533,6 +594,7 @@ const App = () => {
     }, config.refreshRate * 1000);
 
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.refreshRate, isConfigured, timeRange, data]);
 
   // Simulate Real-time Updates (only for mock data)
@@ -546,8 +608,8 @@ const App = () => {
             setData(prevData => {
                 const lastVal = prevData[prevData.length - 1].value;
                 // Random walk
-                let change = Math.floor(Math.random() * 100) - 50;
-                let newVal = Math.max(0, Math.min(4095, lastVal + change));
+                const change = Math.floor(Math.random() * 100) - 50;
+                const newVal = Math.max(0, Math.min(4095, lastVal + change));
                 
                 const newPoint = {
                     timestamp: new Date(),
@@ -562,9 +624,10 @@ const App = () => {
 
     }, 1000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.refreshRate, lastUpdated]);
 
-  const saveSettings = (newConfig) => {
+  const saveSettings = (newConfig: Config) => {
     setConfig(newConfig);
     localStorage.setItem('gas_sensor_config', JSON.stringify(newConfig));
   };
@@ -588,7 +651,6 @@ const App = () => {
   const isDanger = stats.current > 2000;
   const statusText = isDanger ? "GAS DETECTED" : "NORMAL";
   const statusColor = isDanger ? "text-red-500" : "text-emerald-400";
-  const statusBg = isDanger ? "bg-red-500" : "bg-emerald-500";
   const mainGradient = isDanger ? "from-red-500 to-orange-600" : "from-emerald-400 to-cyan-500";
 
   return (
@@ -677,6 +739,7 @@ const App = () => {
             icon="fa-gauge-high"
             iconColor={isDanger ? "text-red-500" : "text-blue-500"}
             subtext="ADC Value (0-4095)"
+            statusColor="bg-slate-700"
           />
 
           {/* Status */}
@@ -699,6 +762,7 @@ const App = () => {
             icon="fa-clock"
             iconColor="text-orange-400"
             subtext={`Refresh Rate: ${config.refreshRate}s`}
+            statusColor="bg-slate-700"
           />
 
            {/* RSSI */}
@@ -708,6 +772,7 @@ const App = () => {
             icon="fa-wifi"
             iconColor={deviceInfo.rssi ? (deviceInfo.rssi > -60 ? "text-green-400" : deviceInfo.rssi > -70 ? "text-yellow-400" : deviceInfo.rssi > -80 ? "text-orange-400" : "text-red-400") : "text-purple-400"}
             subtext={deviceInfo.rssi ? `Signal: ${deviceInfo.rssi > -60 ? 'Excellent' : deviceInfo.rssi > -70 ? 'Good' : deviceInfo.rssi > -80 ? 'Fair' : 'Poor'}${deviceInfo.uptime ? ` • Uptime: ${formatUptime(deviceInfo.uptime)}` : ''}` : 'No data'}
+            statusColor="bg-slate-700"
           />
 
         </div>
