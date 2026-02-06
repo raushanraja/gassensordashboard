@@ -110,6 +110,10 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
   const [hoveredPoint, setHoveredPoint] = useState<HoveredPoint | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 300 });
+  const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState(0);
+  const lastTouchDistanceRef = useRef<number | null>(null);
+  const lastPanXRef = useRef<number | null>(null);
 
   // Handle Resize
   useEffect(() => {
@@ -144,7 +148,15 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
   const maxVal = 4095; // ADC max
   const minVal = 0;
 
-  const getX = (index: number) => (index / (data.length - 1)) * (graphWidth - padding * 2) + padding;
+  // Apply zoom and pan
+  const zoomedWidth = graphWidth * zoom;
+  const maxPanOffset = Math.max(0, (zoomedWidth - graphWidth) / 2);
+  const clampedPanOffset = Math.max(-maxPanOffset, Math.min(maxPanOffset, panOffset));
+
+  const getX = (index: number) => {
+    const baseX = (index / (data.length - 1)) * (zoomedWidth - padding * 2) + padding;
+    return baseX - clampedPanOffset;
+  };
   const getY = (val: number) => graphHeight - ((val - minVal) / (maxVal - minVal)) * (graphHeight - padding * 2) - padding;
 
   // Generate Path (Catmull-Rom or simple Bezier for smoothness)
@@ -157,10 +169,15 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
     const rect = containerRef.current.getBoundingClientRect();
     const x = clientX - rect.left;
     
-    // Find closest data point
-    const index = Math.round(((x - padding) / (graphWidth - padding * 2)) * (data.length - 1));
+    // Find closest data point accounting for zoom and pan
+    const adjustedX = x + clampedPanOffset;
+    const index = Math.round(((adjustedX - padding) / (zoomedWidth - padding * 2)) * (data.length - 1));
     if (index >= 0 && index < data.length) {
-      setHoveredPoint({ ...data[index], x: getX(index), y: getY(data[index].value) });
+      const pointX = getX(index);
+      // Only show if point is visible
+      if (pointX >= 0 && pointX <= graphWidth) {
+        setHoveredPoint({ ...data[index], x: pointX, y: getY(data[index].value) });
+      }
     }
   };
 
@@ -168,30 +185,76 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
     updateHoveredPoint(e.clientX);
   };
 
+  const getTouchDistance = (touches: React.TouchList) => {
+    if (touches.length < 2) return null;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (e.touches.length > 0) {
-      updateHoveredPoint(e.touches[0].clientX);
+    
+    if (e.touches.length === 2) {
+      // Pinch to zoom
+      const currentDistance = getTouchDistance(e.touches);
+      if (currentDistance && lastTouchDistanceRef.current) {
+        const scale = currentDistance / lastTouchDistanceRef.current;
+        setZoom(prev => Math.max(1, Math.min(5, prev * scale)));
+      }
+      lastTouchDistanceRef.current = currentDistance;
+    } else if (e.touches.length === 1) {
+      if (zoom > 1 && lastPanXRef.current !== null) {
+        // Pan when zoomed
+        const deltaX = e.touches[0].clientX - lastPanXRef.current;
+        setPanOffset(prev => prev - deltaX);
+      } else {
+        // Show value on single touch
+        updateHoveredPoint(e.touches[0].clientX);
+      }
+      lastPanXRef.current = e.touches[0].clientX;
     }
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length > 0) {
+    if (e.touches.length === 2) {
+      lastTouchDistanceRef.current = getTouchDistance(e.touches);
+    } else if (e.touches.length === 1) {
+      lastPanXRef.current = e.touches[0].clientX;
       updateHoveredPoint(e.touches[0].clientX);
     }
   };
 
+  const handleTouchEnd = () => {
+    lastTouchDistanceRef.current = null;
+    lastPanXRef.current = null;
+    setHoveredPoint(null);
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom(prev => Math.max(1, Math.min(5, prev * zoomDelta)));
+  };
+
+  const resetZoom = () => {
+    setZoom(1);
+    setPanOffset(0);
+  };
+
   return (
-    <div 
-      ref={containerRef} 
-      className="relative w-full select-none cursor-crosshair overflow-hidden rounded-xl bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm"
-      style={{ height: `${dimensions.height}px` }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setHoveredPoint(null)}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={() => setHoveredPoint(null)}
-    >
+    <div className="relative">
+      <div 
+        ref={containerRef} 
+        className="relative w-full select-none cursor-crosshair overflow-hidden rounded-xl bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm touch-none"
+        style={{ height: `${dimensions.height}px` }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoveredPoint(null)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onWheel={handleWheel}
+      >
       <svg width={dimensions.width} height={dimensions.height} className="absolute inset-0">
         <defs>
           <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
@@ -260,6 +323,20 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
         </div>
       )}
     </div>
+    
+    {/* Zoom Controls */}
+    {zoom > 1 && (
+      <div className="mt-2 flex items-center justify-center gap-2">
+        <button
+          onClick={resetZoom}
+          className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors flex items-center gap-1"
+        >
+          <i className="fa-solid fa-compress"></i>
+          Reset Zoom ({zoom.toFixed(1)}x)
+        </button>
+      </div>
+    )}
+  </div>
   );
 };
 
