@@ -154,8 +154,16 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
   const padding = 20;
   const graphWidth = dimensions.width;
   const graphHeight = dimensions.height;
-  const maxVal = 4095; // ADC max
-  const minVal = 0;
+  
+  // Calculate dynamic max value with padding
+  const dataMax = Math.max(...data.map(d => d.value));
+  const dataMin = Math.min(...data.map(d => d.value));
+  const dataRange = dataMax - dataMin;
+  
+  // Add 10-15% padding to the top, ensuring a minimum range
+  const paddingPercent = 0.125; // 12.5% padding
+  const maxVal = Math.min(4095, Math.ceil(dataMax + (Math.max(dataRange, 100) * paddingPercent)));
+  const minVal = Math.max(0, Math.floor(dataMin - (Math.max(dataRange, 100) * paddingPercent * 0.5)));
 
   // Apply zoom and pan
   const zoomedWidth = graphWidth * zoom;
@@ -273,18 +281,26 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
         </defs>
 
         {/* Grid Lines */}
-        {[0, 1024, 2048, 3072, 4095].map((val) => (
-          <line 
-            key={val}
-            x1={0} 
-            y1={getY(val)} 
-            x2={dimensions.width} 
-            y2={getY(val)} 
-            stroke="#334155" 
-            strokeWidth="1" 
-            strokeDasharray="4 4"
-          />
-        ))}
+        {(() => {
+          // Generate 5 evenly spaced grid lines based on the dynamic range
+          const gridLineCount = 5;
+          const step = (maxVal - minVal) / (gridLineCount - 1);
+          return Array.from({ length: gridLineCount }, (_, i) => {
+            const val = minVal + (step * i);
+            return (
+              <line 
+                key={i}
+                x1={0} 
+                y1={getY(val)} 
+                x2={dimensions.width} 
+                y2={getY(val)} 
+                stroke="#334155" 
+                strokeWidth="1" 
+                strokeDasharray="4 4"
+              />
+            );
+          });
+        })()}
 
         {/* Area Fill */}
         <path d={`M${points.split(' ')[0]} L${points.replace(/,/g, ' ')}`} fill="none" className="hidden" /> {/* Dummy for logic check */}
