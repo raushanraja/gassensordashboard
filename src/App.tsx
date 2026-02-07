@@ -139,7 +139,16 @@ const SmoothLineChart = ({ data, color = "#6366f1" }: SmoothLineChartProps) => {
     };
   }, [data]); // Re-calculate when data changes
 
-  if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-500">No Data</div>;
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-500">
+        <div className="text-center">
+          <i className="fa-solid fa-chart-line text-4xl mb-3 opacity-30"></i>
+          <div className="text-sm">No data available</div>
+        </div>
+      </div>
+    );
+  }
 
   // Scales
   const padding = 20;
@@ -937,7 +946,15 @@ const App = () => {
 
            {/* The Chart */}
            <div className="w-full">
-              <SmoothLineChart data={data} color={isDanger ? '#ef4444' : '#6366f1'} />
+              {isLoading && data.length === 0 ? (
+                <div className="h-64 flex flex-col items-center justify-center text-slate-400">
+                  <i className="fa-solid fa-spinner fa-spin text-4xl mb-4 text-blue-400"></i>
+                  <div className="text-lg font-medium">Loading data...</div>
+                  <div className="text-xs text-slate-500 mt-2">Fetching {timeRange} of sensor readings</div>
+                </div>
+              ) : (
+                <SmoothLineChart data={data} color={isDanger ? '#ef4444' : '#6366f1'} />
+              )}
            </div>
 
         </div>
