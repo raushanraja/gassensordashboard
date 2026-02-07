@@ -587,44 +587,72 @@ const App = () => {
       const hours = hoursMap[timeRange as keyof typeof hoursMap] || 24;
       const startTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
-      let query: string;
-      let url: string;
+      let allReadings: SupabaseReading[] = [];
 
       // On refresh, only fetch new data since last timestamp
       if (!isInitialLoad && data.length > 0) {
         const lastTimestamp = data[data.length - 1].timestamp;
         const lastISO = lastTimestamp.toISOString();
-        query = `${config.tableName}?sensor_id=eq.${config.sensorId}&recorded_at=gt.${lastISO}&order=recorded_at.asc`;
-        url = `${config.supabaseUrl}/rest/v1/${query}`;
-      } else {
-        // Initial load - fetch full time range
-        const startISO = startTime.toISOString();
-        query = `${config.tableName}?sensor_id=eq.${config.sensorId}&recorded_at=gte.${startISO}&order=recorded_at.asc`;
-        url = `${config.supabaseUrl}/rest/v1/${query}`;
-      }
+        const query = `${config.tableName}?sensor_id=eq.${config.sensorId}&recorded_at=gt.${lastISO}&order=recorded_at.asc`;
+        const url = `${config.supabaseUrl}/rest/v1/${query}`;
+        
+        const response = await fetch(url, {
+          headers: {
+            'apikey': config.apiKey,
+            'Authorization': `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
 
-      const response = await fetch(url, {
-        headers: {
-          'apikey': config.apiKey,
-          'Authorization': `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json'
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        allReadings = await response.json();
+      } else {
+        // Initial load - fetch full time range with pagination
+        const startISO = startTime.toISOString();
+        const pageSize = 1000;
+        let offset = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+          const query = `${config.tableName}?sensor_id=eq.${config.sensorId}&recorded_at=gte.${startISO}&order=recorded_at.asc&limit=${pageSize}&offset=${offset}`;
+          const url = `${config.supabaseUrl}/rest/v1/${query}`;
+          
+          const response = await fetch(url, {
+            headers: {
+              'apikey': config.apiKey,
+              'Authorization': `Bearer ${config.apiKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'count=exact'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const readings = await response.json();
+          allReadings.push(...readings);
+          
+          // Check if there are more pages
+          if (readings.length < pageSize) {
+            hasMore = false;
+          } else {
+            offset += pageSize;
+          }
+        }
       }
 
-      const readings = await response.json();
-
-      if (readings && readings.length > 0) {
-        const formattedData = readings.map((r: SupabaseReading) => ({
+      if (allReadings && allReadings.length > 0) {
+        const formattedData = allReadings.map((r: SupabaseReading) => ({
           timestamp: new Date(r.recorded_at),
           value: r.raw_value
         }));
 
         // Extract device metadata from latest reading
-        const latestReading = readings[readings.length - 1];
+        const latestReading = allReadings[allReadings.length - 1];
         if (latestReading.metadata) {
           setDeviceInfo({
             rssi: latestReading.metadata.rssi,
