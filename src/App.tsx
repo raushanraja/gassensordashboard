@@ -28,6 +28,15 @@ interface DeviceInfo {
   uptime: number | null;
 }
 
+interface EnvironmentalData {
+  temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  altitude: number | null;
+  tempBmp280: number | null;
+  tempAht20: number | null;
+}
+
 interface SmoothLineChartProps {
   data: DataPoint[];
   color?: string;
@@ -52,6 +61,12 @@ interface StatCardProps {
 interface SupabaseReading {
   recorded_at: string;
   raw_value: number;
+  temp_bmp280?: number;
+  temp_aht20?: number;
+  temp_average?: number;
+  humidity?: number;
+  pressure?: number;
+  altitude?: number;
   metadata?: {
     rssi: number;
     device: string;
@@ -592,6 +607,14 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo>({ rssi: null, device: null, uptime: null });
+  const [envData, setEnvData] = useState<EnvironmentalData>({
+    temperature: null,
+    humidity: null,
+    pressure: null,
+    altitude: null,
+    tempBmp280: null,
+    tempAht20: null
+  });
 
   // Fetch data from Supabase
   const fetchSupabaseData = async (isInitialLoad = false) => {
@@ -685,6 +708,16 @@ const App = () => {
             uptime: latestReading.metadata.uptime_s
           });
         }
+        
+        // Extract environmental data if available
+        setEnvData({
+          temperature: latestReading.temp_average ?? null,
+          humidity: latestReading.humidity ?? null,
+          pressure: latestReading.pressure ?? null,
+          altitude: latestReading.altitude ?? null,
+          tempBmp280: latestReading.temp_bmp280 ?? null,
+          tempAht20: latestReading.temp_aht20 ?? null
+        });
 
         if (isInitialLoad || data.length === 0) {
           // Initial load - replace all data
@@ -879,53 +912,156 @@ const App = () => {
           </div>
         )}
 
-        {/* STATS GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* Current Reading */}
-          <StatCard 
-            title="Current Level" 
-            value={stats.current}
-            icon="fa-gauge-high"
-            iconColor={isDanger ? "text-red-500" : "text-blue-500"}
-            subtext="ADC Value (0-4095)"
-            statusColor="bg-slate-700"
-          />
-
-          {/* Status */}
-          <div className={`bg-slate-800 border-2 ${isDanger ? 'border-red-500/50' : 'border-emerald-500/50'} rounded-2xl p-5 shadow-lg relative overflow-hidden flex flex-col justify-center`}>
-              <div className="flex items-center gap-3 mb-2">
-                 <i className={`fa-solid ${isDanger ? 'fa-triangle-exclamation' : 'fa-shield-check'} text-2xl ${statusColor}`}></i>
-                 <span className={`text-xl font-black tracking-widest ${statusColor}`}>{statusText}</span>
-              </div>
-              <div className="text-xs text-slate-400">
-                 Threshold: 2000 ADC
-              </div>
-              {/* Background Pulse Effect */}
-              {isDanger && <div className="absolute inset-0 bg-red-500/10 animate-pulse"></div>}
+        {/* GAS SENSOR CARD */}
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-5">
+            <div className={`w-10 h-10 rounded-xl ${isDanger ? 'bg-gradient-to-br from-red-500 to-orange-600' : 'bg-gradient-to-br from-emerald-500 to-green-600'} flex items-center justify-center`}>
+              <i className={`fa-solid ${isDanger ? 'fa-exclamation-triangle' : 'fa-check-circle'} text-white text-xl`}></i>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Gas Sensor Monitor</h3>
+              <p className="text-xs text-slate-400">MQ9 Sensor • {deviceInfo.device || 'ESP32-C3'} • Real-time Detection</p>
+            </div>
           </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {/* Current Level */}
+            <div className={`bg-slate-900 rounded-xl p-4 border ${isDanger ? 'border-red-500/50 hover:border-red-500/70' : 'border-slate-700 hover:border-blue-500/50'} transition-all group`}>
+              <div className="flex items-center gap-2 mb-2">
+                <i className={`fa-solid fa-gauge-high ${isDanger ? 'text-red-400' : 'text-blue-400'} text-lg group-hover:scale-110 transition-transform`}></i>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Level</span>
+              </div>
+              <div className="text-2xl font-bold text-white mb-1">{stats.current}</div>
+              <div className="text-xs text-slate-500">ADC Value (0-4095)</div>
+            </div>
+            
+            {/* Status */}
+            <div className={`bg-slate-900 rounded-xl p-4 border-2 ${isDanger ? 'border-red-500/50 hover:border-red-500/70' : 'border-emerald-500/50 hover:border-emerald-500/70'} transition-all group relative overflow-hidden`}>
+              <div className="flex items-center gap-2 mb-2">
+                <i className={`fa-solid ${isDanger ? 'fa-triangle-exclamation' : 'fa-shield-check'} ${statusColor} text-lg group-hover:scale-110 transition-transform`}></i>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</span>
+              </div>
+              <div className={`text-2xl font-bold ${statusColor} mb-1 tracking-wide`}>{statusText}</div>
+              <div className="text-xs text-slate-500">Threshold: 2000 ADC</div>
+              {isDanger && <div className="absolute inset-0 bg-red-500/10 animate-pulse"></div>}
+            </div>
+            
+            {/* Last Updated */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-orange-500/50 transition-all group">
+              <div className="flex items-center gap-2 mb-2">
+                <i className="fa-solid fa-clock text-orange-400 text-lg group-hover:scale-110 transition-transform"></i>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Last Updated</span>
+              </div>
+              <div className="text-2xl font-bold text-white mb-1 text-sm">
+                {data.length > 0 ? new Date(data[data.length - 1].timestamp).toLocaleTimeString() : '--'}
+              </div>
+              <div className="text-xs text-slate-500">Refresh: {config.refreshRate}s</div>
+            </div>
 
-          {/* Last Updated */}
-          <StatCard 
-            title="Last Updated" 
-            value={data.length > 0 ? new Date(data[data.length - 1].timestamp).toLocaleTimeString() : '--'}
-            icon="fa-clock"
-            iconColor="text-orange-400"
-            subtext={`Refresh Rate: ${config.refreshRate}s`}
-            statusColor="bg-slate-700"
-          />
-
-           {/* RSSI */}
-           <StatCard 
-            title={deviceInfo.device ? `Device: ${deviceInfo.device}` : "Device RSSI"}
-            value={deviceInfo.rssi ? `${deviceInfo.rssi} dBm` : '--'}
-            icon="fa-wifi"
-            iconColor={deviceInfo.rssi ? (deviceInfo.rssi > -60 ? "text-green-400" : deviceInfo.rssi > -70 ? "text-yellow-400" : deviceInfo.rssi > -80 ? "text-orange-400" : "text-red-400") : "text-purple-400"}
-            subtext={deviceInfo.rssi ? `Signal: ${deviceInfo.rssi > -60 ? 'Excellent' : deviceInfo.rssi > -70 ? 'Good' : deviceInfo.rssi > -80 ? 'Fair' : 'Poor'}${deviceInfo.uptime ? ` • Uptime: ${formatUptime(deviceInfo.uptime)}` : ''}` : 'No data'}
-            statusColor="bg-slate-700"
-          />
-
+            {/* Device Name */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-purple-500/50 transition-all group">
+              <div className="flex items-center gap-2 mb-2">
+                <i className="fa-solid fa-microchip text-purple-400 text-lg group-hover:scale-110 transition-transform"></i>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Device</span>
+              </div>
+              <div className="text-2xl font-bold text-white mb-1 text-sm">{deviceInfo.device || 'N/A'}</div>
+              <div className="text-xs text-slate-500">Controller type</div>
+            </div>
+            
+            {/* RSSI */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-green-500/50 transition-all group">
+              <div className="flex items-center gap-2 mb-2">
+                <i className={`fa-solid fa-wifi ${deviceInfo.rssi ? (deviceInfo.rssi > -60 ? "text-green-400" : deviceInfo.rssi > -70 ? "text-yellow-400" : deviceInfo.rssi > -80 ? "text-orange-400" : "text-red-400") : "text-slate-400"} text-lg group-hover:scale-110 transition-transform`}></i>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">WiFi Signal</span>
+              </div>
+              <div className="text-2xl font-bold text-white mb-1">{deviceInfo.rssi ? `${deviceInfo.rssi} dBm` : '--'}</div>
+              <div className="text-xs text-slate-500">
+                {deviceInfo.rssi ? (deviceInfo.rssi > -60 ? 'Excellent' : deviceInfo.rssi > -70 ? 'Good' : deviceInfo.rssi > -80 ? 'Fair' : 'Poor') : 'No data'}
+              </div>
+            </div>
+            
+            {/* Uptime */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-blue-500/50 transition-all group">
+              <div className="flex items-center gap-2 mb-2">
+                <i className="fa-solid fa-hourglass-half text-blue-400 text-lg group-hover:scale-110 transition-transform"></i>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Uptime</span>
+              </div>
+              <div className="text-2xl font-bold text-white mb-1 text-sm">{deviceInfo.uptime ? formatUptime(deviceInfo.uptime) : '--'}</div>
+              <div className="text-xs text-slate-500">HH:MM:SS</div>
+            </div>
+          </div>
         </div>
+
+        {/* ENVIRONMENTAL DATA CARD */}
+        {(envData.temperature !== null || envData.humidity !== null || envData.pressure !== null) && (
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+                <i className="fa-solid fa-cloud-sun text-white text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Environmental Conditions</h3>
+                <p className="text-xs text-slate-400">BMP280 + AHT20 Sensors</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Temperature */}
+              {envData.temperature !== null && (
+                <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-cyan-500/50 transition-all group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <i className="fa-solid fa-temperature-half text-cyan-400 text-lg group-hover:scale-110 transition-transform"></i>
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Temperature</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white mb-1">{envData.temperature.toFixed(1)}°C</div>
+                  <div className="text-xs text-slate-500">
+                    {envData.tempBmp280 !== null && envData.tempAht20 !== null ? (
+                      <>BMP: {envData.tempBmp280.toFixed(1)}°C • AHT: {envData.tempAht20.toFixed(1)}°C</>
+                    ) : (
+                      'Average reading'
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Humidity */}
+              {envData.humidity !== null && (
+                <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-blue-500/50 transition-all group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <i className="fa-solid fa-droplet text-blue-400 text-lg group-hover:scale-110 transition-transform"></i>
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Humidity</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white mb-1">{envData.humidity.toFixed(1)}%</div>
+                  <div className="text-xs text-slate-500">Relative humidity</div>
+                </div>
+              )}
+              
+              {/* Pressure */}
+              {envData.pressure !== null && (
+                <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-purple-500/50 transition-all group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <i className="fa-solid fa-gauge text-purple-400 text-lg group-hover:scale-110 transition-transform"></i>
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pressure</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white mb-1">{envData.pressure.toFixed(1)}</div>
+                  <div className="text-xs text-slate-500">hPa</div>
+                </div>
+              )}
+              
+              {/* Altitude */}
+              {envData.altitude !== null && (
+                <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 hover:border-emerald-500/50 transition-all group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <i className="fa-solid fa-mountain text-emerald-400 text-lg group-hover:scale-110 transition-transform"></i>
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Altitude</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white mb-1">{envData.altitude.toFixed(0)}</div>
+                  <div className="text-xs text-slate-500">meters</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* CHART SECTION */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
