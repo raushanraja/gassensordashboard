@@ -49,15 +49,6 @@ interface SettingsModalProps {
   onSave: (config: Config) => void;
 }
 
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  icon: string;
-  iconColor: string;
-  subtext: string;
-  statusColor?: string;
-}
-
 interface SupabaseReading {
   recorded_at: string;
   raw_value: number;
@@ -564,25 +555,6 @@ const SettingsModal = ({ isOpen, onClose, config, onSave }: SettingsModalProps) 
     </div>
   );
 };
-
-// 3. Stat Card
-const StatCard = ({ title, value, icon, iconColor, subtext, statusColor }: StatCardProps) => (
-  <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-lg relative overflow-hidden group hover:border-slate-600 transition-all">
-    <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500`}>
-        <i className={`fa-solid ${icon} text-6xl ${iconColor}`}></i>
-    </div>
-    <div className="relative z-10">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-8 h-8 rounded-lg ${statusColor || 'bg-slate-700'} bg-opacity-20 flex items-center justify-center`}>
-            <i className={`fa-solid ${icon} ${iconColor}`}></i>
-        </div>
-        <span className="text-slate-400 text-sm font-semibold uppercase tracking-wider">{title}</span>
-      </div>
-      <div className="text-3xl font-bold text-white mb-1 tracking-tight">{value}</div>
-      {subtext && <div className="text-xs font-medium text-slate-500">{subtext}</div>}
-    </div>
-  </div>
-);
 
 /**
  * MAIN APP
